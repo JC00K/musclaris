@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View, StyleSheet } from "react-native";
 import { useAuthStore } from "../src/store/authStore";
+import { useTheme } from "../src/hooks/useTheme";
+import { pullThemeFromSupabase } from "../src/services/themeSync";
 import { LoginScreen } from "../src/screens/auth/LoginScreen";
 import { SignUpScreen } from "../src/screens/auth/SignUpScreen";
 import { ResetPasswordScreen } from "../src/screens/auth/ResetPasswordScreen";
 import { HomeScreen } from "../src/screens/HomeScreen";
+import { SettingsScreen } from "../src/screens/SettingsScreen";
 import { PosePrototypeScreen } from "../src/screens/pose/PosePrototypeScreen";
 
 type AuthView = "login" | "signup" | "reset";
-type AppView = "home" | "pose-prototype";
+type AppView = "home" | "pose-prototype" | "settings";
 
 export default function Index() {
   const { session, isLoading, initialize } = useAuthStore();
+  const { colors } = useTheme();
   const [authView, setAuthView] = useState<AuthView>("login");
   const [appView, setAppView] = useState<AppView>("home");
 
@@ -20,10 +24,17 @@ export default function Index() {
     return unsubscribe;
   }, [initialize]);
 
+  /* Sync theme from Supabase after login */
+  useEffect(() => {
+    if (session?.userId) {
+      pullThemeFromSupabase(session.userId);
+    }
+  }, [session?.userId]);
+
   if (isLoading) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#1a1a2e" />
+      <View style={[styles.loading, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -32,9 +43,13 @@ export default function Index() {
     if (appView === "pose-prototype") {
       return <PosePrototypeScreen onBack={() => setAppView("home")} />;
     }
+    if (appView === "settings") {
+      return <SettingsScreen onBack={() => setAppView("home")} />;
+    }
     return (
       <HomeScreen
         onNavigateToPosePrototype={() => setAppView("pose-prototype")}
+        onNavigateToSettings={() => setAppView("settings")}
       />
     );
   }
@@ -61,6 +76,5 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f8f9fa",
   },
 });

@@ -53,6 +53,8 @@ export function createScheduleRepository(
       row.notification_email = updates.notificationEmail;
     if (updates.notificationPhone !== undefined)
       row.notification_phone = updates.notificationPhone;
+    if (updates.themePreference !== undefined)
+      row.theme_preference = updates.themePreference;
     if (updates.timezone !== undefined) row.timezone = updates.timezone;
 
     const { data, error } = await supabase

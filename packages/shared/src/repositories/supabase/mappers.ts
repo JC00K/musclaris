@@ -85,6 +85,7 @@ export interface UserProfileRow {
   notification_channel: string;
   notification_email: string | null;
   notification_phone: string | null;
+  theme_preference: string;
   timezone: string;
   created_at: string;
   updated_at: string;
@@ -200,6 +201,7 @@ export function mapUserProfileRow(row: UserProfileRow): UserProfile {
       row.notification_channel as UserProfile["notificationChannel"],
     notificationEmail: row.notification_email,
     notificationPhone: row.notification_phone,
+    themePreference: row.theme_preference as UserProfile["themePreference"],
     timezone: row.timezone,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
