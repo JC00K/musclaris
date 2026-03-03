@@ -4,7 +4,9 @@ import type { SlotNumber, SessionType } from "./session";
 /**
  * User's profile including work window and notification preferences.
  * Maps to the `user_profiles` table.
+ *
  */
+
 export interface UserProfile {
   id: string;
   displayName: string;
@@ -15,12 +17,15 @@ export interface UserProfile {
   notificationChannel: NotificationChannel;
   notificationEmail: string | null;
   notificationPhone: string | null;
+  themePreference: ThemePreference;
   timezone: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export type NotificationChannel = "email" | "sms";
+
+export type ThemePreference = "system" | "light" | "dark";
 
 /**
  * A block of time within the work window where the user is available.

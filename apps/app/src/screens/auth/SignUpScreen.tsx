@@ -11,6 +11,7 @@ import {
   Alert,
 } from "react-native";
 import { useAuthStore } from "../../store/authStore";
+import { useTheme } from "../../hooks/useTheme";
 
 interface SignUpScreenProps {
   onNavigateToLogin: () => void;
@@ -21,6 +22,7 @@ export function SignUpScreen({ onNavigateToLogin }: SignUpScreenProps) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const { signUp, isLoading, error, clearError } = useAuthStore();
+  const { colors } = useTheme();
 
   const handleSignUp = async () => {
     if (!email.trim() || !password.trim()) return;
@@ -43,25 +45,44 @@ export function SignUpScreen({ onNavigateToLogin }: SignUpScreenProps) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={styles.inner}>
-        <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.subtitle}>Get started with Myonites</Text>
+        <Text style={[styles.title, { color: colors.text }]}>
+          Create Account
+        </Text>
+        <Text style={[styles.subtitle, { color: colors.textTertiary }]}>
+          Get started with Myonites
+        </Text>
 
         {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+          <View
+            style={[
+              styles.errorBox,
+              { backgroundColor: colors.dangerBackground },
+            ]}>
+            <Text style={[styles.errorText, { color: colors.dangerText }]}>
+              {error}
+            </Text>
             <TouchableOpacity onPress={clearError}>
-              <Text style={styles.errorDismiss}>Dismiss</Text>
+              <Text style={[styles.errorDismiss, { color: colors.dangerText }]}>
+                Dismiss
+              </Text>
             </TouchableOpacity>
           </View>
         )}
 
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              backgroundColor: colors.inputBackground,
+              borderColor: colors.inputBorder,
+              color: colors.inputText,
+            },
+          ]}
           placeholder="Email"
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={colors.inputPlaceholder}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -70,38 +91,60 @@ export function SignUpScreen({ onNavigateToLogin }: SignUpScreenProps) {
         />
 
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              backgroundColor: colors.inputBackground,
+              borderColor: colors.inputBorder,
+              color: colors.inputText,
+            },
+          ]}
           placeholder="Password"
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={colors.inputPlaceholder}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
 
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              backgroundColor: colors.inputBackground,
+              borderColor: colors.inputBorder,
+              color: colors.inputText,
+            },
+          ]}
           placeholder="Confirm password"
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={colors.inputPlaceholder}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry
         />
 
         <TouchableOpacity
-          style={[styles.button, isLoading && styles.buttonDisabled]}
+          style={[
+            styles.button,
+            { backgroundColor: colors.primary },
+            isLoading && styles.buttonDisabled,
+          ]}
           onPress={handleSignUp}
           disabled={isLoading}>
           {isLoading ? (
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color={colors.primaryText} />
           ) : (
-            <Text style={styles.buttonText}>Sign Up</Text>
+            <Text style={[styles.buttonText, { color: colors.primaryText }]}>
+              Sign Up
+            </Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity onPress={onNavigateToLogin} style={styles.link}>
-          <Text style={styles.linkText}>
+          <Text style={[styles.linkText, { color: colors.textTertiary }]}>
             Already have an account?{" "}
-            <Text style={styles.linkBold}>Sign in</Text>
+            <Text style={[styles.linkBold, { color: colors.text }]}>
+              Sign in
+            </Text>
           </Text>
         </TouchableOpacity>
       </View>
@@ -112,7 +155,6 @@ export function SignUpScreen({ onNavigateToLogin }: SignUpScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
   },
   inner: {
     flex: 1,
@@ -125,28 +167,22 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "700",
-    color: "#1a1a2e",
     textAlign: "center",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: "#6c757d",
     textAlign: "center",
     marginBottom: 32,
   },
   input: {
-    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#dee2e6",
     borderRadius: 8,
     padding: 14,
     fontSize: 16,
-    color: "#1a1a2e",
     marginBottom: 12,
   },
   button: {
-    backgroundColor: "#1a1a2e",
     borderRadius: 8,
     padding: 16,
     alignItems: "center",
@@ -156,12 +192,10 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   buttonText: {
-    color: "#ffffff",
     fontSize: 16,
     fontWeight: "600",
   },
   errorBox: {
-    backgroundColor: "#fee2e2",
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
@@ -170,12 +204,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   errorText: {
-    color: "#dc2626",
     fontSize: 14,
     flex: 1,
   },
   errorDismiss: {
-    color: "#dc2626",
     fontWeight: "600",
     marginLeft: 8,
   },
@@ -184,11 +216,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   linkText: {
-    color: "#6c757d",
     fontSize: 14,
   },
   linkBold: {
     fontWeight: "600",
-    color: "#1a1a2e",
   },
 });

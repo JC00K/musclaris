@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View, StyleSheet } from "react-native";
 import { useAuthStore } from "../src/store/authStore";
+import { useTheme } from "../src/hooks/useTheme";
 import { LoginScreen } from "../src/screens/auth/LoginScreen";
 import { SignUpScreen } from "../src/screens/auth/SignUpScreen";
 import { ResetPasswordScreen } from "../src/screens/auth/ResetPasswordScreen";
@@ -12,6 +13,7 @@ type AppView = "home" | "pose-prototype";
 
 export default function Index() {
   const { session, isLoading, initialize } = useAuthStore();
+  const { colors } = useTheme();
   const [authView, setAuthView] = useState<AuthView>("login");
   const [appView, setAppView] = useState<AppView>("home");
 
@@ -22,8 +24,8 @@ export default function Index() {
 
   if (isLoading) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#1a1a2e" />
+      <View style={[styles.loading, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -61,6 +63,5 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f8f9fa",
   },
 });
