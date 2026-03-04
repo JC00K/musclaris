@@ -17,23 +17,51 @@ interface SignUpScreenProps {
   onNavigateToLogin: () => void;
 }
 
+const PASSWORD_RULES = [
+  { label: "At least 8 characters", test: (pw: string) => pw.length >= 8 },
+  {
+    label: "At least 1 uppercase letter",
+    test: (pw: string) => /[A-Z]/.test(pw),
+  },
+  {
+    label: "At least 1 lowercase letter",
+    test: (pw: string) => /[a-z]/.test(pw),
+  },
+  { label: "At least 1 number", test: (pw: string) => /\d/.test(pw) },
+  {
+    label: "At least 1 special character",
+    test: (pw: string) => /[^A-Za-z0-9]/.test(pw),
+  },
+];
+
 export function SignUpScreen({ onNavigateToLogin }: SignUpScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [attempted, setAttempted] = useState(false);
   const { signUp, isLoading, error, clearError } = useAuthStore();
   const { colors } = useTheme();
 
+  const ruleResults = PASSWORD_RULES.map((rule) => ({
+    label: rule.label,
+    met: rule.test(password),
+  }));
+
+  const allRulesMet = ruleResults.every((r) => r.met);
+  const passwordsMatch = password === confirmPassword;
+
   const handleSignUp = async () => {
+    setAttempted(true);
+
     if (!email.trim() || !password.trim()) return;
-    if (password !== confirmPassword) {
+
+    if (!allRulesMet) return;
+
+    if (!passwordsMatch) {
       Alert.alert("Error", "Passwords do not match");
       return;
     }
-    if (password.length < 8) {
-      Alert.alert("Error", "Password must be at least 8 characters");
-      return;
-    }
+
     const success = await signUp(email.trim(), password);
     if (success) {
       Alert.alert(
@@ -106,6 +134,30 @@ export function SignUpScreen({ onNavigateToLogin }: SignUpScreenProps) {
           secureTextEntry
         />
 
+        {password.length > 0 && (
+          <View style={styles.rulesContainer}>
+            {ruleResults.map((rule) => {
+              const showError = attempted && !rule.met;
+              return (
+                <Text
+                  key={rule.label}
+                  style={[
+                    styles.ruleText,
+                    {
+                      color: rule.met
+                        ? colors.success
+                        : showError
+                          ? colors.danger
+                          : colors.textTertiary,
+                    },
+                  ]}>
+                  {rule.met ? "✓" : "○"} {rule.label}
+                </Text>
+              );
+            })}
+          </View>
+        )}
+
         <TextInput
           style={[
             styles.input,
@@ -121,6 +173,12 @@ export function SignUpScreen({ onNavigateToLogin }: SignUpScreenProps) {
           onChangeText={setConfirmPassword}
           secureTextEntry
         />
+
+        {attempted && confirmPassword.length > 0 && !passwordsMatch && (
+          <Text style={[styles.mismatchText, { color: colors.danger }]}>
+            Passwords do not match
+          </Text>
+        )}
 
         <TouchableOpacity
           style={[
@@ -181,6 +239,19 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 16,
     marginBottom: 12,
+  },
+  rulesContainer: {
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  ruleText: {
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  mismatchText: {
+    fontSize: 13,
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   button: {
     borderRadius: 8,
