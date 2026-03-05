@@ -5,5 +5,15 @@
       "src": "api/**/*.ts",
       "use": "@vercel/node"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/notifications/scheduler",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/notifications/defer-check",
+      "schedule": "* * * * *"
+    }
   ]
 }
