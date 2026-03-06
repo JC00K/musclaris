@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 60,
     paddingBottom: 40,
-    maxWidth: 500,
+    maxWidth: 1000,
     width: "100%",
     alignSelf: "center",
   },

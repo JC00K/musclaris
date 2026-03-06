@@ -12,11 +12,13 @@ import { useTheme } from "../hooks/useTheme";
 interface HomeScreenProps {
   onNavigateToPosePrototype: () => void;
   onNavigateToSettings: () => void;
+  onNavigateToSchedule: () => void;
 }
 
 export function HomeScreen({
   onNavigateToPosePrototype,
   onNavigateToSettings,
+  onNavigateToSchedule,
 }: HomeScreenProps) {
   const { session, signOut } = useAuthStore();
   const { colors } = useTheme();
@@ -72,6 +74,17 @@ export function HomeScreen({
           styles.settingsButton,
           { backgroundColor: colors.surface, borderColor: colors.border },
         ]}
+        onPress={onNavigateToSchedule}>
+        <Text style={[styles.settingsButtonText, { color: colors.text }]}>
+          Update Schedule
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.settingsButton,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}
         onPress={onNavigateToSettings}>
         <Text style={[styles.settingsButtonText, { color: colors.text }]}>
           Settings
@@ -107,7 +120,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     width: "100%",
-    maxWidth: 400,
+    maxWidth: 1000,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -128,7 +141,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginTop: 24,
     width: "100%",
-    maxWidth: 400,
+    maxWidth: 1000,
     alignItems: "center",
   },
   prototypeButtonText: {
@@ -141,7 +154,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginTop: 12,
     width: "100%",
-    maxWidth: 400,
+    maxWidth: 1000,
     alignItems: "center",
     borderWidth: 1,
   },
