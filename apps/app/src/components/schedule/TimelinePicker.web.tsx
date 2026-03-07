@@ -1,16 +1,4 @@
-/**
- * TimelinePicker (Web)
- *
- * Uses native DOM mousedown/mousemove/mouseup for smooth dragging.
- * Each block has three zones: left edge, body, right edge.
- * The drag zone is determined at mousedown by cursor position.
- *
- * - Click block to select, delete button appears above
- * - Overlapping blocks merge on drag end
- * - 5-minute snap grid for smooth feel
- */
-
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useTheme } from "../../hooks/useTheme";
 import {
@@ -27,6 +15,7 @@ import {
   HANDLE_HIT_PX,
 } from "./timelineUtils";
 import type { TimelinePickerProps } from "./timelineUtils";
+import type { AvailabilityBlock } from "@myonites/shared";
 
 type DragMode = "start" | "end" | "move";
 
@@ -47,7 +36,7 @@ export function TimelinePicker({
   const { colors } = useTheme();
   const trackRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
-  const blocksRef = useRef(blocks);
+  const blocksRef = useRef<AvailabilityBlock[]>(blocks);
   blocksRef.current = blocks;
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -78,7 +67,10 @@ export function TimelinePicker({
       const rect = getTrackRect();
       if (!rect) return "move";
 
-      const block = blocksRef.current[blockIndex]!;
+      const block: AvailabilityBlock | undefined =
+        blocksRef.current[blockIndex];
+      if (!block) return "move";
+
       const blockStartPx =
         ((timeToMinutes(block.start) - startMin) / totalMin) * rect.width +
         rect.left;
@@ -98,7 +90,9 @@ export function TimelinePicker({
       e.preventDefault();
       e.stopPropagation();
 
-      const block = blocks[blockIndex]!;
+      const block: AvailabilityBlock | undefined = blocks[blockIndex];
+      if (!block) return;
+
       const mode = getDragMode(e.clientX, blockIndex);
 
       dragRef.current = {
@@ -109,79 +103,78 @@ export function TimelinePicker({
         origEnd: timeToMinutes(block.end),
       };
       setDragging(true);
-    },
-    [blocks, getDragMode],
-  );
 
-  /* Global mousemove/mouseup for smooth tracking even outside the component */
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const drag = dragRef.current;
+        if (!drag) return;
 
-      e.preventDefault();
-      const rect = getTrackRect();
-      if (!rect) return;
+        moveEvent.preventDefault();
+        const rect = getTrackRect();
+        if (!rect) return;
 
-      const currentMinutes = xToMinutes(e.clientX);
-      const deltaMinutes = currentMinutes - xToMinutes(drag.startX);
-      const updated = [...blocksRef.current];
+        const currentMinutes = xToMinutes(moveEvent.clientX);
+        const deltaMinutes = currentMinutes - xToMinutes(drag.startX);
+        const updated: AvailabilityBlock[] = [...blocksRef.current];
+        const targetBlock: AvailabilityBlock | undefined =
+          blocksRef.current[drag.blockIndex];
 
-      if (drag.mode === "start") {
-        const newStart = clamp(
-          snap(drag.origStart + deltaMinutes),
-          startMin,
-          drag.origEnd - MIN_BLOCK_MINUTES,
-        );
-        updated[drag.blockIndex] = {
-          start: minutesToTime(newStart),
-          end: blocksRef.current[drag.blockIndex]!.end,
-        };
-      } else if (drag.mode === "end") {
-        const newEnd = clamp(
-          snap(drag.origEnd + deltaMinutes),
-          drag.origStart + MIN_BLOCK_MINUTES,
-          endMin,
-        );
-        updated[drag.blockIndex] = {
-          start: blocksRef.current[drag.blockIndex]!.start,
-          end: minutesToTime(newEnd),
-        };
-      } else {
-        const duration = drag.origEnd - drag.origStart;
-        const newStart = clamp(
-          snap(drag.origStart + deltaMinutes),
-          startMin,
-          endMin - duration,
-        );
-        updated[drag.blockIndex] = {
-          start: minutesToTime(newStart),
-          end: minutesToTime(newStart + duration),
-        };
-      }
+        if (!targetBlock) return;
 
-      onChange(updated);
-    };
-
-    const handleMouseUp = () => {
-      if (dragRef.current) {
-        const wasDragging = dragRef.current.startX !== 0;
-        dragRef.current = null;
-        setDragging(false);
-
-        if (wasDragging) {
-          onChange(mergeBlocks(blocksRef.current));
+        if (drag.mode === "start") {
+          const newStart = clamp(
+            snap(drag.origStart + deltaMinutes),
+            startMin,
+            drag.origEnd - MIN_BLOCK_MINUTES,
+          );
+          updated[drag.blockIndex] = {
+            start: minutesToTime(newStart),
+            end: targetBlock.end,
+          };
+        } else if (drag.mode === "end") {
+          const newEnd = clamp(
+            snap(drag.origEnd + deltaMinutes),
+            drag.origStart + MIN_BLOCK_MINUTES,
+            endMin,
+          );
+          updated[drag.blockIndex] = {
+            start: targetBlock.start,
+            end: minutesToTime(newEnd),
+          };
+        } else {
+          const duration = drag.origEnd - drag.origStart;
+          const newStart = clamp(
+            snap(drag.origStart + deltaMinutes),
+            startMin,
+            endMin - duration,
+          );
+          updated[drag.blockIndex] = {
+            start: minutesToTime(newStart),
+            end: minutesToTime(newStart + duration),
+          };
         }
-      }
-    };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [onChange, xToMinutes, startMin, endMin]);
+        onChange(updated);
+      };
+
+      const handleMouseUp = () => {
+        if (dragRef.current) {
+          const wasDragging = dragRef.current.startX !== 0;
+          dragRef.current = null;
+          setDragging(false);
+
+          if (wasDragging) {
+            onChange(mergeBlocks(blocksRef.current));
+          }
+        }
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [blocks, getDragMode, xToMinutes, startMin, endMin, onChange],
+  );
 
   const handleBlockClick = (index: number) => {
     if (!dragging) {
@@ -206,21 +199,6 @@ export function TimelinePicker({
 
   return (
     <View style={styles.container}>
-      {/* Delete action bar */}
-      {selectedIndex !== null && blocks[selectedIndex] && (
-        <View style={styles.actionBar}>
-          <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>
-            {formatTime12(blocks[selectedIndex]!.start)} –{" "}
-            {formatTime12(blocks[selectedIndex]!.end)}
-          </Text>
-          <TouchableOpacity
-            style={[styles.deleteBtn, { backgroundColor: colors.danger }]}
-            onPress={() => removeBlock(selectedIndex)}>
-            <Text style={styles.deleteBtnText}>Delete Block</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* Timeline track */}
       <div
         ref={trackRef}
@@ -261,7 +239,7 @@ export function TimelinePicker({
         ))}
 
         {/* Draggable blocks */}
-        {blocks.map((block, index) => {
+        {blocks.map((block: AvailabilityBlock, index: number) => {
           const blockStart = timeToMinutes(block.start);
           const blockEnd = timeToMinutes(block.end);
           const left = minutesToPercent(blockStart, startMin, totalMin);
@@ -354,10 +332,10 @@ export function TimelinePicker({
         ))}
       </View>
 
-      {/* Summary list */}
+      {/* Summary list with delete cross */}
       {blocks.length > 0 && (
         <View style={styles.summaryList}>
-          {blocks.map((block, index) => (
+          {blocks.map((block: AvailabilityBlock, index: number) => (
             <View
               key={index}
               style={[styles.summaryRow, { borderColor: colors.border }]}>
@@ -367,13 +345,13 @@ export function TimelinePicker({
               <Text style={[styles.summaryText, { color: colors.text }]}>
                 {formatTime12(block.start)} – {formatTime12(block.end)}
               </Text>
-              <Text
-                style={[
-                  styles.summaryDuration,
-                  { color: colors.textTertiary },
-                ]}>
-                {timeToMinutes(block.end) - timeToMinutes(block.start)} min
-              </Text>
+              <TouchableOpacity
+                onPress={() => removeBlock(index)}
+                style={styles.deleteCross}>
+                <Text style={[styles.deleteText, { color: colors.danger }]}>
+                  ✕
+                </Text>
+              </TouchableOpacity>
             </View>
           ))}
         </View>
@@ -394,28 +372,6 @@ export function TimelinePicker({
 const styles = StyleSheet.create({
   container: {
     width: "100%",
-  },
-  actionBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-    paddingVertical: 8,
-  },
-  actionLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  deleteBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-  },
-  deleteBtnText: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontWeight: "600",
   },
   labelsRow: {
     height: 22,
@@ -450,8 +406,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
-  summaryDuration: {
-    fontSize: 12,
+  deleteCross: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 0, 0, 0.05)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  deleteText: {
+    fontWeight: "bold",
+    fontSize: 16,
   },
   addBtn: {
     borderWidth: 1,

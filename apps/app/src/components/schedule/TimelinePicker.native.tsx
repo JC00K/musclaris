@@ -1,19 +1,12 @@
-/**
- * TimelinePicker (Native)
- *
- * Placeholder — uses a list-based editing approach for now.
- * Will be replaced with gesture-handler based slider once
- * the web version is confirmed working.
- */
-
-import { useState, useRef } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Modal,
-  ScrollView,
+  PanResponder,
+  Dimensions,
+  Pressable,
 } from "react-native";
 import { useTheme } from "../../hooks/useTheme";
 import {
@@ -21,99 +14,40 @@ import {
   minutesToTime,
   minutesToPercent,
   formatTime12,
+  snap,
+  clamp,
   mergeBlocks,
   generateHourLabels,
   createNewBlock,
   MIN_BLOCK_MINUTES,
-  SNAP_MINUTES,
 } from "./timelineUtils";
 import type { TimelinePickerProps } from "./timelineUtils";
+import type { AvailabilityBlock } from "@myonites/shared";
 
-const LONG_PRESS_MS = 3000;
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const CONTAINER_PADDING = 20;
+const TRACK_WIDTH = SCREEN_WIDTH - CONTAINER_PADDING * 2 - 20;
+const HANDLE_WIDTH = 30;
 
-function generateTimeOptions(
-  rangeStart: number,
-  rangeEnd: number,
-): { value: string; label: string; minutes: number }[] {
-  const options: { value: string; label: string; minutes: number }[] = [];
-  for (let m = rangeStart; m <= rangeEnd; m += SNAP_MINUTES) {
-    const time = minutesToTime(m);
-    options.push({ value: time, label: formatTime12(time), minutes: m });
-  }
-  return options;
-}
+type DragMode = "start" | "end" | "move";
 
-interface TimeSelectorProps {
-  visible: boolean;
-  title: string;
-  currentTime: string;
-  minTime: number;
-  maxTime: number;
-  onSelect: (time: string) => void;
-  onClose: () => void;
-}
-
-function TimeSelector({
-  visible,
-  title,
-  currentTime,
-  minTime,
-  maxTime,
-  onSelect,
-  onClose,
-}: TimeSelectorProps) {
-  const { colors } = useTheme();
-  const options = generateTimeOptions(minTime, maxTime);
-  const currentMinutes = timeToMinutes(currentTime);
-
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={modalStyles.overlay}>
-        <View
-          style={[modalStyles.content, { backgroundColor: colors.surface }]}>
-          <Text style={[modalStyles.title, { color: colors.text }]}>
-            {title}
-          </Text>
-          <ScrollView
-            style={modalStyles.scroll}
-            showsVerticalScrollIndicator={false}>
-            {options.map((opt) => {
-              const isSelected = opt.minutes === currentMinutes;
-              return (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[
-                    modalStyles.option,
-                    isSelected && { backgroundColor: colors.primary },
-                  ]}
-                  onPress={() => {
-                    onSelect(opt.value);
-                    onClose();
-                  }}>
-                  <Text
-                    style={[
-                      modalStyles.optionText,
-                      { color: colors.text },
-                      isSelected && { color: colors.primaryText },
-                    ]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-          <TouchableOpacity
-            style={[modalStyles.cancelBtn, { borderColor: colors.border }]}
-            onPress={onClose}>
-            <Text
-              style={[modalStyles.cancelText, { color: colors.textSecondary }]}>
-              Cancel
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
+interface DraggableBlockProps {
+  block: AvailabilityBlock;
+  index: number;
+  colors: {
+    primary: string;
+    text: string;
+    border: string;
+    surface: string;
+    textTertiary: string;
+    danger: string;
+  };
+  startMin: number;
+  totalMin: number;
+  isSelected: boolean;
+  onSelect: () => void;
+  onUpdate: (index: number, start: string, end: string) => void;
+  onFinalize: () => void;
 }
 
 export function TimelinePicker({
@@ -123,364 +57,316 @@ export function TimelinePicker({
   onChange,
 }: TimelinePickerProps) {
   const { colors } = useTheme();
-  const [editingBlock, setEditingBlock] = useState<{
-    index: number;
-    edge: "start" | "end";
-  } | null>(null);
-  const [longPressIndex, setLongPressIndex] = useState<number | null>(null);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const startMin = timeToMinutes(workStart);
   const endMin = timeToMinutes(workEnd);
   const totalMin = endMin - startMin;
   const hourLabels = generateHourLabels(startMin, endMin, totalMin);
 
-  const getStartConstraints = (index: number) => {
-    const prev = index > 0 ? blocks[index - 1] : null;
-    const min = prev ? timeToMinutes(prev.end) + SNAP_MINUTES : startMin;
-    const max = timeToMinutes(blocks[index]!.end) - MIN_BLOCK_MINUTES;
-    return { min, max };
-  };
+  const handleUpdate = useCallback(
+    (index: number, newStart: string, newEnd: string) => {
+      const updated = [...blocks];
+      updated[index] = { start: newStart, end: newEnd };
+      onChange(updated);
+    },
+    [blocks, onChange],
+  );
 
-  const getEndConstraints = (index: number) => {
-    const next = index < blocks.length - 1 ? blocks[index + 1] : null;
-    const min = timeToMinutes(blocks[index]!.start) + MIN_BLOCK_MINUTES;
-    const max = next ? timeToMinutes(next.start) - SNAP_MINUTES : endMin;
-    return { min, max };
-  };
+  const handleFinalize = useCallback(() => {
+    onChange(mergeBlocks([...blocks]));
+  }, [blocks, onChange]);
 
-  const updateBlockTime = (
-    index: number,
-    edge: "start" | "end",
-    time: string,
-  ) => {
-    const updated = [...blocks];
-    if (edge === "start") {
-      updated[index] = { start: time, end: blocks[index]!.end };
-    } else {
-      updated[index] = { start: blocks[index]!.start, end: time };
-    }
-    onChange(mergeBlocks(updated));
-  };
+  const handleAddBlock = useCallback(() => {
+    const nb = createNewBlock(blocks, startMin, endMin);
+    if (nb) onChange(mergeBlocks([...blocks, nb]));
+  }, [blocks, startMin, endMin, onChange]);
 
-  const addBlock = () => {
-    const newBlock = createNewBlock(blocks, startMin, endMin);
-    if (!newBlock) return;
-    onChange(mergeBlocks([...blocks, newBlock]));
-  };
-
-  const removeBlock = (index: number) => {
-    onChange(blocks.filter((_, i) => i !== index));
-    setLongPressIndex(null);
-  };
-
-  const handleLongPressIn = (index: number) => {
-    longPressTimer.current = setTimeout(
-      () => setLongPressIndex(index),
-      LONG_PRESS_MS,
-    );
-  };
-
-  const handleLongPressOut = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  };
-
-  const editingConstraints = editingBlock
-    ? editingBlock.edge === "start"
-      ? getStartConstraints(editingBlock.index)
-      : getEndConstraints(editingBlock.index)
-    : { min: 0, max: 0 };
-
-  const editingCurrentTime = editingBlock
-    ? editingBlock.edge === "start"
-      ? blocks[editingBlock.index]!.start
-      : blocks[editingBlock.index]!.end
-    : "00:00";
+  const handleDeleteBlock = useCallback(
+    (index: number) => {
+      onChange(blocks.filter((_, i) => i !== index));
+    },
+    [blocks, onChange],
+  );
 
   return (
-    <View style={styles.container}>
-      {/* Long-press delete bar */}
-      {longPressIndex !== null && blocks[longPressIndex] && (
-        <View style={styles.actionBar}>
-          <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>
-            {formatTime12(blocks[longPressIndex]!.start)} –{" "}
-            {formatTime12(blocks[longPressIndex]!.end)}
-          </Text>
-          <TouchableOpacity
-            style={[styles.deleteBtn, { backgroundColor: colors.danger }]}
-            onPress={() => removeBlock(longPressIndex)}>
-            <Text style={styles.deleteBtnText}>Delete</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.cancelBtn, { borderColor: colors.border }]}
-            onPress={() => setLongPressIndex(null)}>
-            <Text
-              style={[styles.cancelBtnText, { color: colors.textSecondary }]}>
-              Cancel
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+    <Pressable style={styles.container} onPress={() => setSelectedIndex(null)}>
+      <View style={styles.timelineWrapper}>
+        <View style={styles.trackContainer}>
+          <View style={[styles.rail, { backgroundColor: colors.border }]} />
 
-      {/* Read-only visual timeline */}
-      <View style={styles.timeline}>
-        <View style={[styles.track, { backgroundColor: colors.border }]} />
-        {hourLabels.map((h) => (
-          <View
-            key={h.label}
-            style={[
-              styles.tick,
-              { left: `${h.percent}%`, backgroundColor: colors.textTertiary },
-            ]}
-          />
-        ))}
-        {blocks.map((block, index) => {
-          const left = minutesToPercent(
-            timeToMinutes(block.start),
-            startMin,
-            totalMin,
-          );
-          const width =
-            minutesToPercent(timeToMinutes(block.end), startMin, totalMin) -
-            left;
-          return (
+          {hourLabels.map((h) => (
             <View
-              key={index}
+              key={h.label}
               style={[
-                styles.block,
-                {
-                  left: `${left}%`,
-                  width: `${width}%`,
-                  backgroundColor: colors.primary + "30",
-                  borderColor: colors.primary + "70",
+                styles.tick,
+                { left: `${h.percent}%`, backgroundColor: colors.textTertiary },
+              ]}
+            />
+          ))}
+
+          {blocks.map((block, index) => (
+            <DraggableBlock
+              key={index}
+              block={block}
+              index={index}
+              colors={colors}
+              startMin={startMin}
+              totalMin={totalMin}
+              isSelected={selectedIndex === index}
+              onSelect={() => setSelectedIndex(index)}
+              onUpdate={handleUpdate}
+              onFinalize={handleFinalize}
+            />
+          ))}
+        </View>
+
+        <View style={styles.labelsRow}>
+          {hourLabels.map((h, i) => (
+            <Text
+              key={h.label}
+              style={[
+                styles.hourLabel,
+                { color: colors.textTertiary, left: `${h.percent}%` },
+                i === 0 && { transform: [{ translateX: 0 }] },
+                i === hourLabels.length - 1 && {
+                  transform: [{ translateX: -22 }],
                 },
               ]}>
-              {width > 12 && (
-                <Text
-                  style={[styles.blockLabel, { color: colors.primary }]}
-                  numberOfLines={1}>
-                  {formatTime12(block.start)} – {formatTime12(block.end)}
-                </Text>
-              )}
-            </View>
-          );
-        })}
-      </View>
-
-      {/* Hour labels */}
-      <View style={styles.labelsRow}>
-        {hourLabels.map((h) => (
-          <Text
-            key={h.label}
-            style={[
-              styles.hourLabel,
-              { color: colors.textTertiary, left: `${h.percent}%` },
-            ]}>
-            {h.label}
-          </Text>
-        ))}
-      </View>
-
-      {/* Editable block list */}
-      <View style={styles.blockList}>
-        {blocks.map((block, index) => {
-          const duration =
-            timeToMinutes(block.end) - timeToMinutes(block.start);
-          return (
-            <View
-              key={index}
-              style={[
-                styles.blockRow,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
-              onTouchStart={() => handleLongPressIn(index)}
-              onTouchEnd={handleLongPressOut}
-              onTouchCancel={handleLongPressOut}>
-              <View
-                style={[styles.blockDot, { backgroundColor: colors.primary }]}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.timeChip,
-                  {
-                    backgroundColor: colors.primary + "15",
-                    borderColor: colors.primary + "40",
-                  },
-                ]}
-                onPress={() => setEditingBlock({ index, edge: "start" })}>
-                <Text style={[styles.timeChipText, { color: colors.primary }]}>
-                  {formatTime12(block.start)}
-                </Text>
-              </TouchableOpacity>
-              <Text style={[styles.timeSep, { color: colors.textTertiary }]}>
-                to
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.timeChip,
-                  {
-                    backgroundColor: colors.primary + "15",
-                    borderColor: colors.primary + "40",
-                  },
-                ]}
-                onPress={() => setEditingBlock({ index, edge: "end" })}>
-                <Text style={[styles.timeChipText, { color: colors.primary }]}>
-                  {formatTime12(block.end)}
-                </Text>
-              </TouchableOpacity>
-              <Text
-                style={[styles.durationText, { color: colors.textTertiary }]}>
-                {duration} min
-              </Text>
-            </View>
-          );
-        })}
+              {h.label}
+            </Text>
+          ))}
+        </View>
       </View>
 
       <TouchableOpacity
         style={[styles.addBtn, { borderColor: colors.primary }]}
-        onPress={addBlock}>
+        onPress={handleAddBlock}>
         <Text style={[styles.addBtnText, { color: colors.primary }]}>
           + Add Available Block
         </Text>
       </TouchableOpacity>
 
-      {editingBlock && (
-        <TimeSelector
-          visible
-          title={editingBlock.edge === "start" ? "Block Start" : "Block End"}
-          currentTime={editingCurrentTime}
-          minTime={editingConstraints.min}
-          maxTime={editingConstraints.max}
-          onSelect={(time) =>
-            updateBlockTime(editingBlock.index, editingBlock.edge, time)
+      <View style={styles.summaryList}>
+        {blocks.map((block, index) => (
+          <View
+            key={index}
+            style={[
+              styles.summaryRow,
+              {
+                borderColor:
+                  selectedIndex === index ? colors.primary : colors.border,
+                backgroundColor: colors.surface,
+                borderWidth: selectedIndex === index ? 1.5 : 1,
+              },
+            ]}>
+            <View
+              style={[styles.summaryDot, { backgroundColor: colors.primary }]}
+            />
+            <Text style={[styles.summaryText, { color: colors.text }]}>
+              {formatTime12(block.start)} – {formatTime12(block.end)}
+            </Text>
+            <TouchableOpacity
+              onPress={() => handleDeleteBlock(index)}
+              style={styles.deleteCross}>
+              <Text style={[styles.deleteText, { color: colors.danger }]}>
+                ✕
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+    </Pressable>
+  );
+}
+
+function DraggableBlock({
+  block,
+  index,
+  colors,
+  startMin,
+  totalMin,
+  isSelected,
+  onSelect,
+  onUpdate,
+  onFinalize,
+}: DraggableBlockProps) {
+  const leftPercent = minutesToPercent(
+    timeToMinutes(block.start),
+    startMin,
+    totalMin,
+  );
+  const widthPercent =
+    minutesToPercent(timeToMinutes(block.end), startMin, totalMin) -
+    leftPercent;
+
+  // Calculate physical width in pixels to determine font size
+  const pixelWidth = (widthPercent / 100) * TRACK_WIDTH;
+
+  // Dynamic font sizing: min 7, max 12
+  const dynamicFontSize = clamp(pixelWidth / 14, 7, 12);
+
+  const createResponder = useCallback(
+    (mode: DragMode) =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderGrant: onSelect,
+        onPanResponderMove: (_, gesture) => {
+          const minPerPixel = totalMin / TRACK_WIDTH;
+          const deltaMins = snap(gesture.dx * minPerPixel);
+          const origS = timeToMinutes(block.start);
+          const origE = timeToMinutes(block.end);
+
+          let newS = origS,
+            newE = origE;
+
+          if (mode === "start") {
+            newS = clamp(
+              snap(origS + deltaMins),
+              startMin,
+              origE - MIN_BLOCK_MINUTES,
+            );
+          } else if (mode === "end") {
+            newE = clamp(
+              snap(origE + deltaMins),
+              origS + MIN_BLOCK_MINUTES,
+              startMin + totalMin,
+            );
+          } else {
+            const duration = origE - origS;
+            newS = clamp(
+              snap(origS + deltaMins),
+              startMin,
+              startMin + totalMin - duration,
+            );
+            newE = newS + duration;
           }
-          onClose={() => setEditingBlock(null)}
-        />
-      )}
+          onUpdate(index, minutesToTime(newS), minutesToTime(newE));
+        },
+        onPanResponderRelease: onFinalize,
+      }),
+    [block, index, onSelect, onUpdate, onFinalize, startMin, totalMin],
+  );
+
+  const startRes = useMemo(() => createResponder("start"), [createResponder]);
+  const endRes = useMemo(() => createResponder("end"), [createResponder]);
+  const moveRes = useMemo(() => createResponder("move"), [createResponder]);
+
+  return (
+    <View
+      style={[
+        styles.block,
+        {
+          left: `${leftPercent}%`,
+          width: `${widthPercent}%`,
+          backgroundColor: colors.primary + "20",
+          borderColor: isSelected ? colors.primary : colors.primary + "60",
+          borderWidth: isSelected ? 2 : 1.5,
+        },
+      ]}>
+      <View style={styles.moveZone} {...moveRes.panHandlers} />
+
+      <View style={styles.handle} {...startRes.panHandlers}>
+        <View style={[styles.handleBar, { backgroundColor: colors.primary }]} />
+      </View>
+
+      {/* Dynamic range text */}
+      <Text
+        style={[
+          styles.blockLabel,
+          { color: colors.primary, fontSize: dynamicFontSize },
+        ]}
+        numberOfLines={1}>
+        {formatTime12(block.start)} – {formatTime12(block.end)}
+      </Text>
+
+      <View style={[styles.handle, { right: 0 }]} {...endRes.panHandlers}>
+        <View style={[styles.handleBar, { backgroundColor: colors.primary }]} />
+      </View>
     </View>
   );
 }
 
-const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  content: {
-    borderRadius: 16,
-    padding: 24,
-    width: "100%",
-    maxWidth: 340,
-    maxHeight: 480,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  scroll: { maxHeight: 320 },
-  option: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginBottom: 4,
-    alignItems: "center",
-  },
-  optionText: { fontSize: 16, fontWeight: "500" },
-  cancelBtn: {
-    marginTop: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: "center",
-  },
-  cancelText: { fontSize: 15, fontWeight: "600" },
-});
-
 const styles = StyleSheet.create({
   container: { width: "100%" },
-  actionBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-    paddingVertical: 8,
+  timelineWrapper: { marginTop: 10 },
+  trackContainer: {
+    height: 70,
+    justifyContent: "center",
+    position: "relative",
+    marginHorizontal: 10,
   },
-  actionLabel: { flex: 1, fontSize: 14, fontWeight: "500" },
-  deleteBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 6 },
-  deleteBtnText: { color: "#ffffff", fontSize: 13, fontWeight: "600" },
-  cancelBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  cancelBtnText: { fontSize: 13, fontWeight: "600" },
-  timeline: { height: 56, position: "relative", justifyContent: "center" },
-  track: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: 6,
-    borderRadius: 3,
-  },
-  tick: { position: "absolute", width: 1, height: 14, top: 21 },
+  rail: { position: "absolute", left: 0, right: 0, height: 6, borderRadius: 3 },
+  tick: { position: "absolute", width: 1, height: 12, top: 41 },
   block: {
     position: "absolute",
-    height: 40,
-    top: 8,
+    height: 46,
+    top: 12,
     borderRadius: 8,
-    borderWidth: 1,
+    flexDirection: "row",
     alignItems: "center",
+    overflow: "hidden",
+  },
+  moveZone: { ...StyleSheet.absoluteFillObject },
+  handle: {
+    position: "absolute",
+    width: HANDLE_WIDTH,
+    height: "100%",
     justifyContent: "center",
+    alignItems: "center",
+    zIndex: 20,
   },
+  handleBar: { width: 3, height: 20, borderRadius: 1.5, opacity: 0.7 },
   blockLabel: {
-    fontSize: 10,
-    fontWeight: "600",
+    fontWeight: "bold",
     textAlign: "center",
-    paddingHorizontal: 4,
+    flex: 1,
+    // Ensure text stays between handles even when small
+    paddingHorizontal: HANDLE_WIDTH - 5,
   },
-  labelsRow: { height: 22, position: "relative", marginTop: 2 },
+  labelsRow: {
+    height: 20,
+    marginTop: 4,
+    position: "relative",
+    marginHorizontal: 10,
+  },
   hourLabel: {
     position: "absolute",
     fontSize: 10,
-    fontWeight: "500",
-    transform: [{ translateX: -14 }],
+    fontWeight: "600",
+    transform: [{ translateX: -12 }],
   },
-  blockList: { marginTop: 20, gap: 10 },
-  blockRow: {
+  addBtn: {
+    borderWidth: 1,
+    borderRadius: 10,
+    borderStyle: "dashed",
+    padding: 14,
+    alignItems: "center",
+    marginTop: 20,
+    marginBottom: 16,
+  },
+  addBtnText: { fontSize: 14, fontWeight: "700" },
+  summaryList: { gap: 8 },
+  summaryRow: {
     flexDirection: "row",
     alignItems: "center",
     padding: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     gap: 10,
   },
-  blockDot: { width: 10, height: 10, borderRadius: 5 },
-  timeChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  timeChipText: { fontSize: 14, fontWeight: "600" },
-  timeSep: { fontSize: 13 },
-  durationText: { fontSize: 13, fontWeight: "500" },
-  addBtn: {
-    borderWidth: 1,
-    borderRadius: 8,
-    borderStyle: "dashed",
-    paddingVertical: 12,
+  summaryDot: { width: 8, height: 8, borderRadius: 4 },
+  summaryText: { flex: 1, fontSize: 14, fontWeight: "600" },
+  deleteCross: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 0, 0, 0.05)",
+    justifyContent: "center",
     alignItems: "center",
-    marginTop: 16,
   },
-  addBtnText: { fontSize: 14, fontWeight: "600" },
+  deleteText: {
+    fontWeight: "bold",
+    fontSize: 16,
+  },
 });
